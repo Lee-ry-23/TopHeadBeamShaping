@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.pyo
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.pytest_cache/
+*.zip
+*.safetensors
+.DS_Store
+*.pdf
+outputs/
+*.h5
+*.npy
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.tiff
+*.log
+*.pkl
+Beam_Waists (2).ipynb
