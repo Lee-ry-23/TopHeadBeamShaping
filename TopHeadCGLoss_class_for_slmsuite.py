@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from functions import build_target, build_weighting_mask, phase_gradient
 
@@ -41,6 +42,18 @@ class TopHeadCGLoss(nn.Module):
     def _prepare_buffer(self, tensor, farfield):
         return tensor.to(device=farfield.device, dtype=torch.float64)
 
+    def _resize_real(self, tensor, shape):
+        if tuple(tensor.shape) == tuple(shape):
+            return tensor
+        return F.interpolate(tensor[None, None, :, :], size=shape, mode="area")[0, 0]
+
+    def _resize_complex(self, tensor, shape):
+        if tuple(tensor.shape) == tuple(shape):
+            return tensor
+        real = self._resize_real(torch.real(tensor), shape)
+        imag = self._resize_real(torch.imag(tensor), shape)
+        return torch.complex(real, imag)
+
     def _target_from_argument(self, target, farfield):
         target_tensor = torch.as_tensor(target, device=farfield.device)
         if torch.is_complex(target_tensor):
@@ -49,11 +62,15 @@ class TopHeadCGLoss(nn.Module):
 
     def forward(self, farfield, target=None):
         farfield = torch.as_tensor(farfield)
+        target_shape = tuple(self.target_amplitude.shape)
+        farfield = self._resize_complex(farfield, target_shape)
+
         amp = torch.abs(farfield).to(dtype=torch.float64)
         phase = torch.angle(farfield).to(dtype=torch.float64)
 
         if self.use_passed_target and target is not None:
             target_amplitude = self._target_from_argument(target, farfield)
+            target_amplitude = self._resize_real(target_amplitude, target_shape)
         else:
             target_amplitude = self._prepare_buffer(self.target_amplitude, farfield)
 
