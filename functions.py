@@ -2,7 +2,7 @@ import numpy as np
 import scipy
 import h5py
 import matplotlib.pyplot as plt
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import binary_dilation, gaussian_filter
 from scipy.ndimage import zoom
 
 
@@ -248,6 +248,21 @@ def weighting_value(M, p, v=0):
     return z
 
 
+def build_mask_from_target(target, margin_pixels=0, threshold=1e-2, background=0.0):
+    target = np.asarray(target)
+    if target.size == 0 or np.max(np.abs(target)) <= 0:
+        raise ValueError("Cannot build a mask from an empty or zero target.")
+
+    core = np.abs(target) > threshold * np.max(np.abs(target))
+    if margin_pixels > 0:
+        structure = np.ones((2 * int(margin_pixels) + 1, 2 * int(margin_pixels) + 1), dtype=bool)
+        core = binary_dilation(core, structure=structure)
+
+    mask = np.full(target.shape, background, dtype=float)
+    mask[core] = 1.0
+    return mask
+
+
 def phase_guess_2d(nx, ny, D, asp, R, ang, B):
     x = np.arange(nx) - nx/2
     y = np.arange(ny) - ny/2
@@ -259,6 +274,19 @@ def phase_guess_2d(nx, ny, D, asp, R, ang, B):
 
     z = KC + KQ + KL
     return z.reshape(-1)
+
+def phase_guess_2d_unreshaped(nx, ny, D, asp, R, ang, B, superpixel_factor):
+    x = np.arange(nx) - nx/2
+    y = np.arange(ny) - ny/2
+    X, Y = np.meshgrid(x, y, indexing='xy')
+
+    KL = D * (X*np.cos(ang) + Y*np.sin(ang))
+    KQ = 3 * R * (asp*(X**2) + (1-asp)*(Y**2))
+    KC = B * np.sqrt(X**2 + Y**2)
+
+    z = KC + KQ + KL
+    z = np.mod(expand_superpixel(z, superpixel_factor), 2 * np.pi)
+    return z
 
 def phase_gradient(nx, ny, kx, ky):
     x = np.arange(nx)
@@ -313,7 +341,17 @@ def build_target(cfg):
     raise ValueError(f"Unsupported target_mode: {cfg.target_mode}")
 
 
-def build_weighting_mask(cfg):
+def build_weighting_mask(cfg, target=None):
+    if target is not None:
+        delta_x_um, delta_y_um = get_focal_plane_sampling_um(cfg)
+        margin_pixels = int(np.ceil(cfg.mask_margin_um / min(delta_x_um, delta_y_um)))
+        return build_mask_from_target(
+            target,
+            margin_pixels=margin_pixels,
+            threshold=cfg.weighting_threshold,
+            background=cfg.weighting_background,
+        )
+
     focal_x_um, focal_y_um = get_focal_plane_axes_um(cfg)
     X, Y = np.meshgrid(focal_x_um, focal_y_um, indexing="xy")
 
